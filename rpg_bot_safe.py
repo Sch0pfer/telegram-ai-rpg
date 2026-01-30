@@ -53,6 +53,41 @@ WORLD_CODES = {
 }
 user_sessions = {}
 
+def get_main_menu():
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+    start_button = telebot.types.KeyboardButton("🎲 Начало / Сюжет")
+    profile_button = telebot.types.KeyboardButton("👤 Профиль")
+    inventory_button = telebot.types.KeyboardButton("🎒 Инвентарь")
+    shop_button = telebot.types.KeyboardButton("🏪 Магазин")
+
+    markup.add(start_button, profile_button, inventory_button, shop_button)
+
+    return markup
+
+def text_handler(message):
+    """
+    Возвращает True, если была нажата кнопка меню.
+    Возвращает False, если это просто текст (ход игры).
+    """
+    user_text = message.text
+
+    if user_text == "🎲 Начало / Сюжет":
+        start(message)
+        return True
+    elif user_text == "🎒 Инвентарь":
+        show_inventory(message)
+        return True
+    elif user_text == "👤 Профиль":
+        profile(message)
+        return True
+    elif user_text == "🏪 Магазин":
+        show_shop(message)
+        return True
+    
+    return False
+
+
 # === ФУНКЦИЯ СОЗДАНИЯ ИГРЫ ===
 def create_game(setting_key):
     setting = SETTINGS[setting_key] # Достаем настройки по номеру (ключу)
@@ -93,6 +128,20 @@ def create_game(setting_key):
         config=types.GenerateContentConfig(system_instruction=full_prompt)
     )
 
+@bot.callback_query_handler(func=lambda call: True)
+def callback_inline(call):
+    user_id = call.message.chat.id
+    
+    if call.data.startswith("купить "):
+        # Вытаскиваем название: "купить меч" -> "меч"
+        item_name = call.data.split(" ", 1)[1]
+        
+        # Вызываем универсальную функцию
+        perform_buy(user_id, item_name, user_id)
+        
+        # Обязательно отвечаем телеграму, чтобы убрались "часики" на кнопке
+        bot.answer_callback_query(call.id)
+
 # === КОМАНДА /START ===
 @bot.message_handler(commands=["start"])
 def start(message):
@@ -108,7 +157,7 @@ def start(message):
     
     menu_text += "\nОтправь цифру номера:"
     
-    bot.send_message(user_id, menu_text, parse_mode="Markdown")
+    bot.send_message(user_id, menu_text, parse_mode="Markdown", reply_markup=get_main_menu())
     waiting_for_setting[user_id] = True # Ставим метку, что игрок в меню
 
 # === КОМАНДА /RESET ===
@@ -122,7 +171,7 @@ def reset(message):
     if user_id in waiting_for_setting:
         del waiting_for_setting[user_id]
         
-    bot.send_message(user_id, "💥 Мир уничтожен. Напиши /start для выбора нового.")
+    bot.send_message(user_id, "💥 Мир уничтожен. Напиши /start для выбора нового.", reply_markup=get_main_menu())
 
 @bot.message_handler(commands=["profile"])
 def profile(message):
@@ -130,8 +179,9 @@ def profile(message):
 
     stats = db.get_stats(user_id=user_id)
 
-    if not games[user_id]:
-        bot.send_message(user_id, "Ты еще не начал игру! Жми /start")
+    if user_id not in games:
+        bot.send_message(user_id, "Ты еще не начал игру! Жми /start", reply_markup=get_main_menu())
+        return
 
     if stats:
         hp = stats[0]
@@ -148,72 +198,102 @@ def profile(message):
 🎒 Инвентарь: {inv}
         """
 
-        bot.send_message(user_id, text=text, parse_mode="Markdown")
-    else:
-        bot.send_message(user_id, "Ты еще не начал игру! Жми /start")
+        bot.send_message(user_id, text=text, parse_mode="Markdown", reply_markup=get_main_menu())
+
+@bot.message_handler(commands=["inventory"])
+def show_inventory(message):
+    user_id = message.chat.id
+    
+    if user_id not in games:
+        bot.send_message(user_id, "Сначала начни игру!", reply_markup=get_main_menu())
+        return
+
+    stats = db.get_stats(user_id=user_id)
+    if stats:
+        inventory = stats[3]
+        bot.send_message(user_id, f"🎒 Инвентарь: {inventory}", parse_mode="Markdown", reply_markup=get_main_menu())
+
 
 @bot.message_handler(commands=["shop"])
 def show_shop(message):
     user_id = message.chat.id
 
     if user_id not in games:
-        bot.send_message(user_id, "Ты еще не начал игру! Жми /start")
+        bot.send_message(user_id, "Ты еще не начал игру! Жми /start", reply_markup=get_main_menu())
         return
     
     if user_id not in user_sessions:
-        bot.send_message(user_id, "Мир не выбран. Напиши /reset")
+        bot.send_message(user_id, "Мир не выбран. Напиши /reset", reply_markup=get_main_menu())
         return
 
     world_key = user_sessions[user_id] 
-
     world_type = WORLD_CODES[world_key]
     
-    bot.send_message(user_id, shop.get_menu(world_type=world_type))
+    markup = telebot.types.InlineKeyboardMarkup()
 
-@bot.message_handler(func=lambda m: m.text.lower().startswith("купить"))
-def handle_buy(message):
-    user_id = message.chat.id
+    buy_potion_btn = telebot.types.InlineKeyboardButton(text="Купить зелье (30g)", callback_data="купить зелье")
+    buy_sword_btn = telebot.types.InlineKeyboardButton(text="Купить меч (50g)", callback_data="купить меч")
 
+    markup.add(buy_potion_btn, buy_sword_btn)
+
+    bot.send_message(user_id, f"{shop.get_menu(world_type=world_type)}\nВыберите действие", reply_markup=get_main_menu())
+    bot.send_message(user_id, "Или используйте предложенные варианты", reply_markup=markup)
+
+def perform_buy(user_id, item_name, chat_id):
+    """
+    Универсальная функция покупки.
+    """
     stats = db.get_stats(user_id=user_id)
     if not stats:
-        bot.send_message(user_id, "Сначала /start")
+        bot.send_message(chat_id, "Сначала /start", reply_markup=get_main_menu())
         return
 
     if user_id not in user_sessions:
-        bot.send_message(user_id, "Мир не выбран. Напиши /reset")
-
-    parts = message.text.split(" ", 1)
-
-    if len(parts) < 2:
-        bot.send_message(user_id, "Что купить? Напиши: купить меч")
+        bot.send_message(chat_id, "Мир не выбран. Напиши /reset", reply_markup=get_main_menu())
         return
-    
-    item_name = parts[1].strip()
 
-    user_money = stats[0]
+    user_money = stats[1] # Внимательно с индексом! В db.py get_stats возвращает (hp, money, xp, inv) -> money это [1]
 
     world_key = user_sessions[user_id]
     world_type = WORLD_CODES[world_key]
     price = shop.get_price(item_name, world_type)
 
-    if price == None:
-        bot.send_message(user_id, "Не существует такого предмета")
+    if price is None:
+        bot.send_message(chat_id, f"Товара '{item_name}' нет в наличии.", reply_markup=get_main_menu())
         return
     
     if user_money < price:
-        bot.send_message(user_id, "У тебя не хватает монет")
+        bot.send_message(chat_id, f"Не хватает монет! Нужно {price}, у тебя {user_money}.", reply_markup=get_main_menu())
         return
     
+    # Покупка
     db.update_inventory(user_id=user_id, new_item=item_name)
     db.spend_money(user_id=user_id, amount=price)
-    bot.send_message(user_id, f"Куплено: {item_name.capitalize()}!")
+    bot.send_message(chat_id, f"✅ Куплено: {item_name.capitalize()}!", reply_markup=get_main_menu())
+
+@bot.message_handler(func=lambda m: m.text.lower().startswith("купить"))
+def handle_buy(message):
+    user_id = message.chat.id
+    
+    parts = message.text.split(" ", 1)
+    if len(parts) < 2:
+        bot.send_message(user_id, "Что купить? Пример: купить меч", reply_markup=get_main_menu())
+        return
+    
+    item_name = parts[1].strip()
+    
+    # Вызываем универсальную функцию
+    perform_buy(user_id, item_name, message.chat.id)
 
 # === ОБРАБОТКА ВСЕХ СООБЩЕНИЙ ===
 @bot.message_handler(func=lambda m: True)
 def play(message):
     user_id = message.chat.id
-    text = message.text.strip()
-    
+    if text_handler(message=message):
+        return
+
+    text = message.text.strip()    
+
     # 1. ЛОГИКА ВЫБОРА МИРА (ЕСЛИ ИГРОК В МЕНЮ)
     if user_id in waiting_for_setting:
         if text in SETTINGS:
@@ -222,24 +302,24 @@ def play(message):
             
             user_sessions[user_id] = text
 
-            bot.send_message(user_id, f"🌍 Загрузка мира: {SETTINGS[text]['name']}...")
+            bot.send_message(user_id, f"🌍 Загрузка мира: {SETTINGS[text]['name']}...", reply_markup=get_main_menu())
             bot.send_chat_action(user_id, "typing")
             
             try:
                 # Создаем игру с выбранным сеттингом
                 games[user_id] = create_game(text)
                 response = games[user_id].send_message("Начни игру. Введи игрока в курс дела.")
-                bot.send_message(user_id, response.text)
+                bot.send_message(user_id, response.text, reply_markup=get_main_menu())
             except Exception as e:
-                bot.send_message(user_id, "❌ Ошибка загрузки нейросети. Попробуй /start снова.")
+                bot.send_message(user_id, "❌ Ошибка загрузки нейросети. Попробуй /start снова.", reply_markup=get_main_menu())
                 print(f"CRITICAL ERROR: {e}") # Пишем ошибку в консоль разработчика
         else:
-            bot.send_message(user_id, "⚠️ Нет такого мира. Отправь цифру из меню.")
+            bot.send_message(user_id, "⚠️ Нет такого мира. Отправь цифру из меню.", reply_markup=get_main_menu())
         return
     
     # 2. ЛОГИКА САМОЙ ИГРЫ
     if user_id not in games:
-        bot.send_message(user_id, "Напиши /start чтобы начать игру")
+        bot.send_message(user_id, "Напиши /start чтобы начать игру", reply_markup=get_main_menu())
         return
     
     # Идет игра
@@ -265,19 +345,19 @@ def play(message):
         else:
             clean_text = response.text
 
-        bot.send_message(user_id, clean_text)
+        bot.send_message(user_id, clean_text, reply_markup=get_main_menu())
 
         if db.get_stats(user_id=user_id)[0] == 0:
             del(games[user_id])
             del(user_sessions[user_id])
             db.clean_stats(user_id=user_id)
-            bot.send_message(user_id, "☠️ ТЫ ПОГИБ. Игра окончена. Жми /start")
+            bot.send_message(user_id, "☠️ ТЫ ПОГИБ. Игра окончена. Жми /start", reply_markup=get_main_menu())
             return
 
         db.add_xp(user_id, 5)
         db.add_money(user_id, 10)
     except Exception as e:
-        bot.send_message(user_id, "⚠️ Помехи связи (ошибка API). Повтори действие.")
+        bot.send_message(user_id, "⚠️ Помехи связи (ошибка API). Повтори действие.", reply_markup=get_main_menu())
         print(f"GAME ERROR: {e}")
 
 # === ЗАПУСК ===
