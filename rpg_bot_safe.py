@@ -1,10 +1,7 @@
+import telebot
 import db
 import shop
-
-import re
-import telebot
-from google import genai
-from google.genai import types
+from game_session import GameSession
 
 # === НАСТРОЙКИ И КЛЮЧИ ===
 TOKEN: str = "XXX"
@@ -12,46 +9,8 @@ API_KEY: str = "XXX"
 
 bot = telebot.TeleBot(token=TOKEN)
 db.init_db()
-client = genai.Client(api_key=API_KEY)
 
-games = {}               # Тут храним активные игры: {user_id: chat_object}
-waiting_for_setting = {} # Тут храним тех, кто выбирает меню: {user_id: True}
-
-# === СЛОВАРЬ СЕТТИНГОВ (МИРОВ) ===
-SETTINGS = {
-    "1": {
-        "name": "🚀 Космос",
-        "prompt": """Ты - бортовой компьютер космического корабля в беде.
-                     Стиль: технический, тревожный.
-                     Используй термины: разгерметизация, модуль, сектор, кислород."""
-    },
-    "2": {
-        "name": "🏰 Фэнтези",
-        "prompt": """Ты - мастер подземелий в мире мечей и магии.
-                     Стиль: эпический, загадочный, старинный.
-                     Используй термины: заклинание, гильдия, древний, мана, клинок."""
-    },
-    "3": {
-        "name": "🧟 Зомби-апокалипсис",
-        "prompt": """Ты - рация выжившего в мире после эпидемии.
-                     Стиль: напряжённый, отчаянный, грубый.
-                     Используй термины: укрытие, припасы, орда, зараженные, патроны."""
-    },
-    "4": {
-        "name": "🕵️ Нуар-Детектив",
-        "prompt": """Ты - ведущий текстового квеста в стиле Нуар-детектива 1940-х годов.
-                     Стиль: мрачный, циничный, дождливый город, джаз.
-                     Используй термины: улика, револьвер, роковая женщина, инспектор."""
-    }
-}
-
-WORLD_CODES = {
-    "1": "space",
-    "2": "fantasy",
-    "3": "zombie",
-    "4": "noir"
-}
-user_sessions = {}
+sessions = {} 
 
 def get_main_menu():
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -88,46 +47,6 @@ def text_handler(message):
     return False
 
 
-# === ФУНКЦИЯ СОЗДАНИЯ ИГРЫ ===
-def create_game(setting_key):
-    setting = SETTINGS[setting_key] # Достаем настройки по номеру (ключу)
-    
-    # Собираем полный промпт из кусочков
-    full_prompt = f"""{setting['prompt']}
-    
-    ВАЖНЫЕ ПРАВИЛА:
-    - В начале игры инвентарь всегда пустой.
-    - Описывай ситуацию кратко (2-3 предложения).
-    - Всегда давай 2-3 варианта действий в конце.
-    - Используй эмодзи для атмосферы.
-
-    ВАЖНОЕ ПРАВИЛО МЕХАНИКИ:
-    Если персонаж получает урон или лечится, ТЫ ОБЯЗАН добавить в конец ответа тег:
-    [HP: -число] или [HP: +число]
-
-    Примеры:
-    "Ты упал в яму и сломал ногу. [HP: -15]"
-    "Ты выпил зелье. Тепло разливается по телу. [HP: +20]"
-
-    НИКОГДА не пиши этот тег, если здоровье не меняется.
-    
-    ФОРМАТ ОТВЕТА СТРОГО ТАКОЙ:
-    [Текст описания ситуации...]
-    
-    Варианты:
-    1. ...
-    2. ...
-    
-    🎒 Инвентарь: [список]
-    ❤️ Здоровье: 100%
-    """
-    
-    # Создаем чат с нейросетью
-    return client.chats.create(
-        model="gemini-2.5-flash",
-        config=types.GenerateContentConfig(system_instruction=full_prompt)
-    )
-
 @bot.callback_query_handler(func=lambda call: True)
 def callback_inline(call):
     user_id = call.message.chat.id
@@ -142,36 +61,26 @@ def callback_inline(call):
         # Обязательно отвечаем телеграму, чтобы убрались "часики" на кнопке
         bot.answer_callback_query(call.id)
 
-# === КОМАНДА /START ===
+# === START: Создаем сессию ===
 @bot.message_handler(commands=["start"])
 def start(message):
     user_id = message.chat.id
     username = message.from_user.username
-
-    db.add_user(user_id=user_id, username=username)
-
-    # Генерируем текст меню автоматически из нашего словаря
-    menu_text = "⚔️ *ВЫБЕРИ СВОЙ МИР* ⚔️\n\n"
-    for key, value in SETTINGS.items():
-        menu_text += f"{key} — {value['name']}\n"
     
-    menu_text += "\nОтправь цифру номера:"
+    db.add_user(user_id, username)
     
-    bot.send_message(user_id, menu_text, parse_mode="Markdown", reply_markup=get_main_menu())
-    waiting_for_setting[user_id] = True # Ставим метку, что игрок в меню
+    # СОЗДАЕМ ОБЪЕКТ СЕССИИ
+    sessions[user_id] = GameSession(user_id, API_KEY)
+    
+    bot.send_message(user_id, "⚔️ Выбери мир:\n1. Космос\n2. Фэнтези\n3. Зомби\n4. Нуар", reply_markup=get_main_menu())
 
-# === КОМАНДА /RESET ===
+# === RESET ===
 @bot.message_handler(commands=["reset"])
 def reset(message):
     user_id = message.chat.id
-    
-    # Удаляем игрока отовсюду
-    if user_id in games:
-        del games[user_id]
-    if user_id in waiting_for_setting:
-        del waiting_for_setting[user_id]
-        
-    bot.send_message(user_id, "💥 Мир уничтожен. Напиши /start для выбора нового.", reply_markup=get_main_menu())
+    if user_id in sessions:
+        del sessions[user_id] # Просто удаляем объект сессии
+    bot.send_message(user_id, "Мир сброшен. Жми /start", reply_markup=get_main_menu())
 
 @bot.message_handler(commands=["profile"])
 def profile(message):
@@ -179,7 +88,7 @@ def profile(message):
 
     stats = db.get_stats(user_id=user_id)
 
-    if user_id not in games:
+    if user_id not in sessions:
         bot.send_message(user_id, "Ты еще не начал игру! Жми /start", reply_markup=get_main_menu())
         return
 
@@ -204,7 +113,7 @@ def profile(message):
 def show_inventory(message):
     user_id = message.chat.id
     
-    if user_id not in games:
+    if user_id not in sessions:
         bot.send_message(user_id, "Сначала начни игру!", reply_markup=get_main_menu())
         return
 
@@ -218,17 +127,19 @@ def show_inventory(message):
 def show_shop(message):
     user_id = message.chat.id
 
-    if user_id not in games:
-        bot.send_message(user_id, "Ты еще не начал игру! Жми /start", reply_markup=get_main_menu())
+    if user_id not in sessions:
+        bot.send_message(user_id, "Сначала /start", reply_markup=get_main_menu())
         return
     
-    if user_id not in user_sessions:
-        bot.send_message(user_id, "Мир не выбран. Напиши /reset", reply_markup=get_main_menu())
+    session = sessions[user_id]
+
+    if not session.is_active:
+        bot.send_message(user_id, "Сначала выбери мир!", reply_markup=get_main_menu())
         return
 
-    world_key = user_sessions[user_id] 
-    world_type = WORLD_CODES[world_key]
-    
+    world_type = session.world_type
+    bot.send_message(user_id, shop.get_menu(world_type), reply_markup=get_main_menu())
+
     markup = telebot.types.InlineKeyboardMarkup()
 
     buy_potion_btn = telebot.types.InlineKeyboardButton(text="Купить зелье (30g)", callback_data="купить зелье")
@@ -236,7 +147,6 @@ def show_shop(message):
 
     markup.add(buy_potion_btn, buy_sword_btn)
 
-    bot.send_message(user_id, f"{shop.get_menu(world_type=world_type)}\nВыберите действие", reply_markup=get_main_menu())
     bot.send_message(user_id, "Или используйте предложенные варианты", reply_markup=markup)
 
 def perform_buy(user_id, item_name, chat_id):
@@ -248,14 +158,15 @@ def perform_buy(user_id, item_name, chat_id):
         bot.send_message(chat_id, "Сначала /start", reply_markup=get_main_menu())
         return
 
-    if user_id not in user_sessions:
+    session = sessions[user_id]
+
+    if not session.is_active:
         bot.send_message(chat_id, "Мир не выбран. Напиши /reset", reply_markup=get_main_menu())
         return
 
-    user_money = stats[1] # Внимательно с индексом! В db.py get_stats возвращает (hp, money, xp, inv) -> money это [1]
+    user_money = stats[1]
 
-    world_key = user_sessions[user_id]
-    world_type = WORLD_CODES[world_key]
+    world_type = session.world_type
     price = shop.get_price(item_name, world_type)
 
     if price is None:
@@ -285,80 +196,51 @@ def handle_buy(message):
     # Вызываем универсальную функцию
     perform_buy(user_id, item_name, message.chat.id)
 
-# === ОБРАБОТКА ВСЕХ СООБЩЕНИЙ ===
+# === ГЛАВНЫЙ ЦИКЛ ИГРЫ (PLAY) ===
 @bot.message_handler(func=lambda m: True)
 def play(message):
     user_id = message.chat.id
-    if text_handler(message=message):
+    
+    if text_handler(message):
         return
 
-    text = message.text.strip()    
+    # 1. Проверяем, есть ли сессия
+    if user_id not in sessions:
+        bot.send_message(user_id, "Напиши /start", reply_markup=get_main_menu())
+        return
 
-    # 1. ЛОГИКА ВЫБОРА МИРА (ЕСЛИ ИГРОК В МЕНЮ)
-    if user_id in waiting_for_setting:
-        if text in SETTINGS:
-            # Игрок выбрал правильную цифру
-            del waiting_for_setting[user_id] # Убираем из "ждунов"
-            
-            user_sessions[user_id] = text
+    session = sessions[user_id] # Получаем объект игрока
 
-            bot.send_message(user_id, f"🌍 Загрузка мира: {SETTINGS[text]['name']}...", reply_markup=get_main_menu())
-            bot.send_chat_action(user_id, "typing")
-            
-            try:
-                # Создаем игру с выбранным сеттингом
-                games[user_id] = create_game(text)
-                response = games[user_id].send_message("Начни игру. Введи игрока в курс дела.")
-                bot.send_message(user_id, response.text, reply_markup=get_main_menu())
-            except Exception as e:
-                bot.send_message(user_id, "❌ Ошибка загрузки нейросети. Попробуй /start снова.", reply_markup=get_main_menu())
-                print(f"CRITICAL ERROR: {e}") # Пишем ошибку в консоль разработчика
+    # 2. Если игра еще НЕ началась (игрок выбирает мир)
+    if not session.is_active:
+        user_choice = message.text.strip()
+        
+        # Пытаемся запустить игру через метод класса
+        intro_text = session.start_game(user_choice)
+        
+        if intro_text:
+            bot.send_message(user_id, f"🌍 Мир загружен!\n\n{intro_text}", reply_markup=get_main_menu())
         else:
-            bot.send_message(user_id, "⚠️ Нет такого мира. Отправь цифру из меню.", reply_markup=get_main_menu())
+            bot.send_message(user_id, "⚠️ Неверный выбор. Отправь цифру 1-4.", reply_markup=get_main_menu())
         return
-    
-    # 2. ЛОГИКА САМОЙ ИГРЫ
-    if user_id not in games:
-        bot.send_message(user_id, "Напиши /start чтобы начать игру", reply_markup=get_main_menu())
-        return
-    
-    # Идет игра
+
+    # 3. Если игра идет - делаем ход
     bot.send_chat_action(user_id, "typing")
-    
     try:
-        current_state = db.get_stats(user_id)
-        player_hp = current_state[0]
-        player_money = current_state[1]
-        player_xp = current_state[2]
-        player_inv = current_state[3]
-
-        context = f"[Системная инфа: Здоровье: {player_hp}, Монеты: {player_money}, XP: {player_xp}, Инвентарь игрока: {player_inv}]. Действие игрока: {text}"
-
-        response = games[user_id].send_message(context)
-
-        match = re.search(r'\[HP: ([+-]\d+)\]', response.text)
-
-        if match:
-            clean_text = response.text.replace(match.group(0), "").strip()
-            hp_change = int(match.group(1))
-            db.change_hp(user_id=user_id, hp_amount=hp_change)
-        else:
-            clean_text = response.text
-
-        bot.send_message(user_id, clean_text, reply_markup=get_main_menu())
-
-        if db.get_stats(user_id=user_id)[0] == 0:
-            del(games[user_id])
-            del(user_sessions[user_id])
-            db.clean_stats(user_id=user_id)
-            bot.send_message(user_id, "☠️ ТЫ ПОГИБ. Игра окончена. Жми /start", reply_markup=get_main_menu())
-            return
-
-        db.add_xp(user_id, 5)
-        db.add_money(user_id, 10)
+        # Вся магия теперь внутри make_move
+        answer = session.make_move(message.text)
+        bot.send_message(user_id, answer, reply_markup=get_main_menu())
+        
+        # Проверка на смерть
+        stats = db.get_stats(user_id)
+        if stats and stats[0] <= 0: # HP <= 0
+            del sessions[user_id]
+            db.clean_stats(user_id)
+            bot.send_message(user_id, "☠️ ТЫ ПОГИБ. /start", reply_markup=get_main_menu())
+            
     except Exception as e:
-        bot.send_message(user_id, "⚠️ Помехи связи (ошибка API). Повтори действие.", reply_markup=get_main_menu())
-        print(f"GAME ERROR: {e}")
+        print(f"Error: {e}")
+        bot.send_message(user_id, "Ошибка нейросети. Попробуй еще раз.")
 
 # === ЗАПУСК ===
 if __name__ == "__main__":
