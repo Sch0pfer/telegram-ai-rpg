@@ -9,8 +9,8 @@ from game_session import GameSession
 load_dotenv()
 
 # === НАСТРОЙКИ И КЛЮЧИ ===
-TOKEN: str = os.get_env("BOT_TOKEN")
-API_KEY: str = os.get_env("GOOGLE_KEY")
+TOKEN: str = os.getenv("BOT_TOKEN")
+API_KEY: str = os.getenv("GOOGLE_KEY")
 
 bot = telebot.TeleBot(token=TOKEN)
 db.init_db()
