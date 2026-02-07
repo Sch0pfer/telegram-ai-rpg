@@ -1,7 +1,9 @@
-import db
 from google import genai
 from google.genai import types
 import re
+
+from config import Config
+import db
 
 # === СЛОВАРЬ СЕТТИНГОВ (МИРОВ) ===
 SETTINGS = {
@@ -40,12 +42,12 @@ WORLD_CODES = {
 }
 
 class GameSession:
-    def __init__(self, user_id, api_key):
+    def __init__(self, user_id):
         """
         Запускается один раз, когда игрок жмет /start
         """
         self.user_id = user_id
-        self.client = genai.Client(api_key=api_key)
+        self.client = genai.Client(api_key=Config.GOOGLE_API_KEY)
         self.chat = None         # Тут будет жить подключение к Gemini
         self.world_type = None   # Тут будет тип мира ("space", "fantasy")
         self.is_active = False   # Начата ли игра?

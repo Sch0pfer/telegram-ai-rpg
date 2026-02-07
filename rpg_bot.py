@@ -2,6 +2,7 @@ import telebot
 import os
 from dotenv import load_dotenv
 
+from config import Config
 import db
 import shop
 from game_session import GameSession
@@ -9,8 +10,8 @@ from game_session import GameSession
 load_dotenv()
 
 # === НАСТРОЙКИ И КЛЮЧИ ===
-TOKEN: str = os.getenv("BOT_TOKEN")
-API_KEY: str = os.getenv("GOOGLE_KEY")
+TOKEN: str = Config.BOT_TOKEN
+API_KEY: str = Config.GOOGLE_API_KEY
 
 bot = telebot.TeleBot(token=TOKEN)
 db.init_db()
@@ -75,7 +76,7 @@ def start(message):
     db.add_user(user_id, username)
     
     # СОЗДАЕМ ОБЪЕКТ СЕССИИ
-    sessions[user_id] = GameSession(user_id, API_KEY)
+    sessions[user_id] = GameSession(user_id)
     
     bot.send_message(user_id, "⚔️ Выбери мир:\n1. Космос\n2. Фэнтези\n3. Зомби\n4. Нуар", reply_markup=get_main_menu())
 
