@@ -6,6 +6,7 @@ from config import Config
 import db
 import shop
 from game_session import GameSession
+from npc import Goga
 
 load_dotenv()
 
@@ -17,6 +18,8 @@ bot = telebot.TeleBot(token=TOKEN)
 db.init_db()
 
 sessions = {} 
+
+goga = Goga()
 
 def get_main_menu():
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -199,13 +202,13 @@ def perform_buy(user_id, item_name, chat_id):
         return
     
     if user_money < price:
-        bot.send_message(chat_id, f"Не хватает монет! Нужно {price}, у тебя {user_money}.", reply_markup=get_main_menu())
+        bot.send_message(chat_id, f"Не хватает монет! Нужно {price}, у тебя {user_money}.\n{goga.on_no_money()}", reply_markup=get_main_menu())
         return
     
     # Покупка
     db.update_inventory(user_id=user_id, new_item=item_name)
     db.spend_money(user_id=user_id, amount=price)
-    bot.send_message(chat_id, f"✅ Куплено: {item_name.capitalize()}!", reply_markup=get_main_menu())
+    bot.send_message(chat_id, f"✅ Куплено: {item_name.capitalize()}!\n{goga.on_buy(item_name=item_name)}", reply_markup=get_main_menu())
 
 @bot.message_handler(func=lambda m: m.text.lower().startswith("купить"))
 def handle_buy(message):
@@ -271,7 +274,7 @@ def play(message):
         if stats and stats[0] <= 0: # HP <= 0
             del sessions[user_id]
             db.clean_stats(user_id)
-            bot.send_message(user_id, "☠️ ТЫ ПОГИБ. /start", reply_markup=get_main_menu())
+            bot.send_message(user_id, f"☠️ ТЫ ПОГИБ. /start\n{goga.on_death()}", reply_markup=get_main_menu())
             
     except Exception as e:
         print(f"Error: {e}")
