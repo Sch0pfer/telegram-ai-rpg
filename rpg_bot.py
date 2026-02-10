@@ -30,12 +30,23 @@ def get_main_menu():
 
     return markup
 
-def text_handler(message):
+def get_admin_menu():
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+    add_money_button = telebot.types.KeyboardButton("💰 +1000 монет")
+    check_players_stats_button = telebot.types.KeyboardButton("👀 Узнать статистику")
+
+    markup.add(add_money_button, check_players_stats_button)
+
+    return markup
+
+def text_handler(message, id_user):
     """
     Возвращает True, если была нажата кнопка меню.
     Возвращает False, если это просто текст (ход игры).
     """
     user_text = message.text
+    id = id_user
 
     if user_text == "🎲 Начало / Сюжет":
         start(message)
@@ -49,7 +60,12 @@ def text_handler(message):
     elif user_text == "🏪 Магазин":
         show_shop(message)
         return True
-    
+    elif user_text == "💰 +1000 монет":
+        db.add_money(user_id=id, money_amount=1000)
+    elif user_text == "👀 Узнать статистику":
+        players_amount = db.players_stats()
+        bot.send_message(id, f"Количество игроков: {players_amount}.", reply_markup=get_admin_menu())
+
     return False
 
 
@@ -202,12 +218,22 @@ def handle_buy(message):
     # Вызываем универсальную функцию
     perform_buy(user_id, item_name, message.chat.id)
 
+@bot.message_handler(commands=["admin"])
+def admin(message):
+    user_id = message.chat.id
+
+    if user_id != Config.ADMIN_ID:
+        bot.send_message("У тебя нет власти здесь!")
+        return
+    
+    bot.send_message("Приветствую, создатель.", reply_markup=get_admin_menu())
+
 # === ГЛАВНЫЙ ЦИКЛ ИГРЫ (PLAY) ===
 @bot.message_handler(func=lambda m: True)
 def play(message):
     user_id = message.chat.id
     
-    if text_handler(message):
+    if text_handler(message, user_id):
         return
 
     # 1. Проверяем, есть ли сессия

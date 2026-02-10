@@ -75,3 +75,7 @@ def clean_stats(user_id):
 def spend_money(user_id, amount):
     cursor.execute("UPDATE users SET money = money - ? WHERE user_id = ?", (amount, user_id))
     connection.commit()
+
+def players_stats():
+    cursor.execute("SELECT COUNT(*) FROM users")
+    return cursor.fetchone()[0]
