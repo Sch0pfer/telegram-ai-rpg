@@ -103,7 +103,17 @@ class GameSession:
         
         # Делаем первый запрос, чтобы получить вступление
         response = self.chat.send_message("Начни игру. Введи в курс дела.")
-        return response.text
+        ai_text = response.text
+
+        img_match = re.search(r'\[IMG: (.+)\]', ai_text)
+        final_text = ai_text
+        image_url = ""
+
+        if img_match:
+            final_text = ai_text.replace(img_match.group(0), "").strip()
+            image_url = image_gen.generate_location_image(img_match.group(1))
+
+        return [final_text, image_url]
 
 
     def make_move(self, user_text):
@@ -144,6 +154,7 @@ class GameSession:
         img_match = re.search(r'\[IMG: (.+)\]', clean_text)
         final_text = clean_text
         image_url = ""
+        
         if img_match:
             final_text = clean_text.replace(img_match.group(0), "").strip()
             image_url = image_gen.generate_location_image(prompt_text=img_match.group(1))
