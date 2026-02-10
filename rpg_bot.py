@@ -62,9 +62,12 @@ def text_handler(message, id_user):
         return True
     elif user_text == "💰 +1000 монет":
         db.add_money(user_id=id, money_amount=1000)
+        bot.send_message(id, "Вам начислено 1000 золотых.", reply_markup=get_admin_menu())
+        return True
     elif user_text == "👀 Узнать статистику":
         players_amount = db.players_stats()
         bot.send_message(id, f"Количество игроков: {players_amount}.", reply_markup=get_admin_menu())
+        return True
 
     return False
 
