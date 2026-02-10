@@ -15,6 +15,6 @@ def generate_location_image(prompt_text):
 
     encoded_prompt = urllib.parse.quote(full_prompt)
 
-    image_url = f"https://pollinations.ai{encoded_prompt}?width=1024&height=1024&nologo=true"
+    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true"
 
     return image_url

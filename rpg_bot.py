@@ -261,7 +261,11 @@ def play(message):
             img_url = intro_data[1]
             
             if img_url:
-                bot.send_photo(user_id, photo=img_url, caption=f"🌍 Мир загружен!\n\n{text}", reply_markup=get_main_menu())
+                try:
+                    bot.send_photo(user_id, photo=img_url, caption=f"🌍 Мир загружен!\n\n{text}", reply_markup=get_main_menu())
+                except Exception as e:
+                    print(f"⚠️ Ошибка картинки: {e}")
+                    bot.send_message(user_id, answer[0], reply_markup=get_main_menu())
             else:
                 bot.send_message(user_id, f"🌍 Мир загружен!\n\n{text}", reply_markup=get_main_menu())
         else:
@@ -273,7 +277,18 @@ def play(message):
     try:
         # Вся магия теперь внутри make_move
         answer = session.make_move(message.text)
-        bot.send_photo(user_id, photo=answer[1], caption=answer[0], reply_markup=get_main_menu())
+        
+        text = answer[0]
+        img_url = answer[1]
+            
+        if img_url:
+            try:
+                bot.send_photo(user_id, photo=img_url, caption=text, reply_markup=get_main_menu())
+            except Exception as e:
+                print(f"⚠️ Ошибка картинки: {e}")
+                bot.send_message(user_id, text, reply_markup=get_main_menu())
+        else:
+            bot.send_message(user_id, text, reply_markup=get_main_menu())
         
         # Проверка на смерть
         stats = db.get_stats(user_id)
