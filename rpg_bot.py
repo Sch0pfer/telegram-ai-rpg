@@ -254,10 +254,16 @@ def play(message):
         user_choice = message.text.strip()
         
         # Пытаемся запустить игру через метод класса
-        intro_text = session.start_game(user_choice)
-        
-        if intro_text:
-            bot.send_message(user_id, f"🌍 Мир загружен!\n\n{intro_text}", reply_markup=get_main_menu())
+        intro_data = session.start_game(user_choice)
+
+        if intro_data:
+            text = intro_data[0]
+            img_url = intro_data[1]
+            
+            if img_url:
+                bot.send_photo(user_id, photo=img_url, caption=f"🌍 Мир загружен!\n\n{text}", reply_markup=get_main_menu())
+            else:
+                bot.send_message(user_id, f"🌍 Мир загружен!\n\n{text}", reply_markup=get_main_menu())
         else:
             bot.send_message(user_id, "⚠️ Неверный выбор. Отправь цифру 1-4.", reply_markup=get_main_menu())
         return
