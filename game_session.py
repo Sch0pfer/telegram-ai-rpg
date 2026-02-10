@@ -141,7 +141,7 @@ class GameSession:
             db.change_hp(self.user_id, hp_change) # Обновляем БД
 
         # 5. Ищем RegEx (IMG)
-        img_match = re.search(r'\[(IMG w+)\]', clean_text)
+        img_match = re.search(r'\[IMG (\w+)\]', clean_text)
         final_text = clean_text
         image_url = ""
         if img_match:
