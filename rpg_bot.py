@@ -265,7 +265,7 @@ def play(message):
                     bot.send_photo(user_id, photo=img_url, caption=f"🌍 Мир загружен!\n\n{text}", reply_markup=get_main_menu())
                 except Exception as e:
                     print(f"⚠️ Ошибка картинки: {e}")
-                    bot.send_message(user_id, answer[0], reply_markup=get_main_menu())
+                    bot.send_message(user_id, text, reply_markup=get_main_menu())
             else:
                 bot.send_message(user_id, f"🌍 Мир загружен!\n\n{text}", reply_markup=get_main_menu())
         else:
