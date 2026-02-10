@@ -3,6 +3,7 @@ from google.genai import types
 import re
 
 from config import Config
+import image_gen
 import db
 
 # === СЛОВАРЬ СЕТТИНГОВ (МИРОВ) ===
@@ -78,6 +79,12 @@ class GameSession:
 
         НИКОГДА не пиши этот тег, если здоровье не меняется.
         
+        ВАЖНОЕ ПРАВИЛО ОКРУЖЕНИЯ:
+        ТЫ ОБЯЗАН добавить в конец ответа тег, например:
+        [IMG: мрачный замок на горе]
+
+        ВСЕГДА пиши этот тег.
+
         ФОРМАТ ОТВЕТА:
         [Описание...]
         Варианты:
@@ -133,8 +140,16 @@ class GameSession:
             hp_change = int(match.group(1))
             db.change_hp(self.user_id, hp_change) # Обновляем БД
 
+        # 5. Ищем RegEx (IMG)
+        img_match = re.search(r'\[(IMG w+)\]', clean_text)
+        final_text = clean_text
+        image_url = ""
+        if img_match:
+            final_text = clean_text.replace(img_match.group(0), "").strip()
+            image_url = image_gen.generate_location_image(prompt_text=img_match.group(1))
+
         # Начисляем награду за ход
         db.add_xp(self.user_id, 5)
         db.add_money(self.user_id, 10)
 
-        return clean_text
+        return [final_text, image_url]

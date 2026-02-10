@@ -267,7 +267,7 @@ def play(message):
     try:
         # Вся магия теперь внутри make_move
         answer = session.make_move(message.text)
-        bot.send_message(user_id, answer, reply_markup=get_main_menu())
+        bot.send_photo(user_id, photo=answer[1], caption=answer[0], reply_markup=get_main_menu())
         
         # Проверка на смерть
         stats = db.get_stats(user_id)
