@@ -226,7 +226,7 @@ def admin(message):
         bot.send_message("У тебя нет власти здесь!")
         return
     
-    bot.send_message("Приветствую, создатель.", reply_markup=get_admin_menu())
+    bot.send_message(user_id, "Приветствую, создатель.", reply_markup=get_admin_menu())
 
 # === ГЛАВНЫЙ ЦИКЛ ИГРЫ (PLAY) ===
 @bot.message_handler(func=lambda m: True)
