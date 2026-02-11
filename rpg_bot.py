@@ -234,6 +234,31 @@ def admin(message):
     
     bot.send_message(user_id, "Приветствую, создатель.", reply_markup=get_admin_menu())
 
+@bot.message_handler(commands=['buy'])
+def buy_money(message):
+    bot.send_invoice(
+        message.chat.id,
+        title="Мешок золота",
+        description="500 золотых монет для вашего героя",
+        invoice_payload="gold 500",
+        provider_token=Config.PAYMENT_TOKEN,
+        currency="XTR",
+        prices=[telebot.types.LabeledPrice("Золото", 1)]
+    )
+
+@bot.pre_checkout_query_handler(func=lambda query: True)
+def process_pre_checkout_query(pre_checkout_query):
+    bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+
+@bot.message_handler(content_types=['successful_payment'])
+def got_payment(message):
+    payment_info = message.successful_payment
+    payload = payment_info.invoice_payload
+
+    if payload == "gold 500":
+        db.add_money(message.chat.id, 500)
+        bot.send_message(message.chat.id, "💰 Оплата прошла! Держи золото.")
+
 # === ГЛАВНЫЙ ЦИКЛ ИГРЫ (PLAY) ===
 @bot.message_handler(func=lambda m: True)
 def play(message):
