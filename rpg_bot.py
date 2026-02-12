@@ -6,7 +6,6 @@ from config import Config
 import db
 import shop
 from game_session import GameSession
-from npc import Goga
 
 load_dotenv()
 
@@ -18,8 +17,6 @@ bot = telebot.TeleBot(token=TOKEN)
 db.init_db()
 
 sessions = {} 
-
-goga = Goga()
 
 def get_main_menu():
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -64,20 +61,37 @@ def text_handler(message, id_user):
         show_shop(message)
         return True
     elif user_text == "💰 +1000 монет":
-        db.add_money(user_id=id, money_amount=1000)
-        bot.send_message(id, "Вам начислено 1000 золотых.", reply_markup=get_admin_menu())
-        return True
+        if id == Config.ADMIN_ID:
+            db.add_money(user_id=id, money_amount=1000)
+            bot.send_message(id, "Вам начислено 1000 золотых.", reply_markup=get_admin_menu())
+            return True
+        else:
+            bot.send_message(id, "У вас недостаточно прав для выполнения этой команды!")
+            return True
     elif user_text == "👀 Узнать статистику":
-        players_amount = db.players_stats()
-        bot.send_message(id, f"Количество игроков: {players_amount}.", reply_markup=get_admin_menu())
-        return True
+        if id == Config.ADMIN_ID:
+            players_amount = db.players_stats()
+            bot.send_message(id, f"Количество игроков: {players_amount}.", reply_markup=get_admin_menu())
+            return True
+        else:
+            bot.send_message(id, "У вас недостаточно прав для выполнения этой команды!")
+            return True
 
     return False
 
+def check_session(user_id):
+    if user_id in sessions:
+        return True
+    else:
+        bot.send_message(user_id, "Ты еще не начал игру! Жми /start", reply_markup=get_main_menu())
+        return False
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_inline(call):
     user_id = call.message.chat.id
+
+    if not check_session(user_id=user_id):
+        return
     
     if call.data.startswith("купить "):
         # Вытаскиваем название: "купить меч" -> "меч"
@@ -94,7 +108,7 @@ def callback_inline(call):
 def start(message):
     user_id = message.chat.id
     username = message.from_user.username
-    
+
     db.add_user(user_id, username)
     
     # СОЗДАЕМ ОБЪЕКТ СЕССИИ
@@ -106,18 +120,19 @@ def start(message):
 @bot.message_handler(commands=["reset"])
 def reset(message):
     user_id = message.chat.id
-    if user_id in sessions:
+    if check_session(user_id=user_id):
         del sessions[user_id] # Просто удаляем объект сессии
-    bot.send_message(user_id, "Мир сброшен. Жми /start", reply_markup=get_main_menu())
-
+        bot.send_message(user_id, "Мир сброшен. Жми /start", reply_markup=get_main_menu())    
+    else:
+        return
+    
 @bot.message_handler(commands=["profile"])
 def profile(message):
     user_id = message.chat.id
 
     stats = db.get_stats(user_id=user_id)
 
-    if user_id not in sessions:
-        bot.send_message(user_id, "Ты еще не начал игру! Жми /start", reply_markup=get_main_menu())
+    if not check_session(user_id=user_id):
         return
 
     if stats:
@@ -141,8 +156,7 @@ def profile(message):
 def show_inventory(message):
     user_id = message.chat.id
     
-    if user_id not in sessions:
-        bot.send_message(user_id, "Сначала начни игру!", reply_markup=get_main_menu())
+    if not check_session(user_id=user_id):
         return
 
     stats = db.get_stats(user_id=user_id)
@@ -155,8 +169,7 @@ def show_inventory(message):
 def show_shop(message):
     user_id = message.chat.id
 
-    if user_id not in sessions:
-        bot.send_message(user_id, "Сначала /start", reply_markup=get_main_menu())
+    if not check_session(user_id=user_id):
         return
     
     session = sessions[user_id]
@@ -202,13 +215,13 @@ def perform_buy(user_id, item_name, chat_id):
         return
     
     if user_money < price:
-        bot.send_message(chat_id, f"Не хватает монет! Нужно {price}, у тебя {user_money}.\n{goga.on_no_money()}", reply_markup=get_main_menu())
+        bot.send_message(chat_id, f"Не хватает монет! Нужно {price}, у тебя {user_money}.\n{session.goga.on_no_money()}", reply_markup=get_main_menu())
         return
     
     # Покупка
     db.update_inventory(user_id=user_id, new_item=item_name)
     db.spend_money(user_id=user_id, amount=price)
-    bot.send_message(chat_id, f"✅ Куплено: {item_name.capitalize()}!\n{goga.on_buy(item_name=item_name)}", reply_markup=get_main_menu())
+    bot.send_message(chat_id, f"✅ Куплено: {item_name.capitalize()}!\n{session.goga.on_buy(item_name=item_name)}", reply_markup=get_main_menu())
 
 @bot.message_handler(func=lambda m: m.text.lower().startswith("купить"))
 def handle_buy(message):
@@ -268,8 +281,7 @@ def play(message):
         return
 
     # 1. Проверяем, есть ли сессия
-    if user_id not in sessions:
-        bot.send_message(user_id, "Напиши /start", reply_markup=get_main_menu())
+    if not check_session(user_id=user_id):
         return
 
     session = sessions[user_id] # Получаем объект игрока
@@ -320,7 +332,7 @@ def play(message):
         if stats and stats[0] <= 0: # HP <= 0
             del sessions[user_id]
             db.clean_stats(user_id)
-            bot.send_message(user_id, f"☠️ ТЫ ПОГИБ. /start\n{goga.on_death()}", reply_markup=get_main_menu())
+            bot.send_message(user_id, f"☠️ ТЫ ПОГИБ. /start\n{session.goga.on_death()}", reply_markup=get_main_menu())
             
     except Exception as e:
         print(f"Error: {e}")

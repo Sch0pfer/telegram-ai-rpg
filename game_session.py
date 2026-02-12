@@ -3,6 +3,7 @@ from google.genai import types
 import re
 
 from config import Config
+from npc import Goga
 import image_gen
 import db
 
@@ -52,6 +53,7 @@ class GameSession:
         self.chat = None         # Тут будет жить подключение к Gemini
         self.world_type = None   # Тут будет тип мира ("space", "fantasy")
         self.is_active = False   # Начата ли игра?
+        self.goga = Goga()
 
     def start_game(self, setting_key):
         """
@@ -142,13 +144,25 @@ class GameSession:
         ai_text = response.text
 
         # 4. Ищем RegEx (HP)
-        match = re.search(r'\[HP: ([+-]?\d+)\]', ai_text)
         clean_text = ai_text
-        
-        if match:
-            clean_text = ai_text.replace(match.group(0), "").strip()
-            hp_change = int(match.group(1))
-            db.change_hp(self.user_id, hp_change) # Обновляем БД
+        hp_total_change = 0
+
+        # Ищем все вхождения паттерна
+        for match in re.finditer(r'\[HP: ([+-]?\d+)\]', ai_text):
+            full_tag = match.group(0)      # Весь тег, например, [HP: -10]
+            hp_value = int(match.group(1)) # Только число, например, -10
+            
+            # Убираем тег из текста
+            clean_text = clean_text.replace(full_tag, "")
+            # Суммируем изменения
+            hp_total_change += hp_value
+
+        # Очищаем лишние пробелы
+        clean_text = clean_text.strip()
+
+        # Если изменения были, обновляем базу один раз
+        if hp_total_change != 0:
+            db.change_hp(self.user_id, hp_total_change)
 
         # 5. Ищем RegEx (IMG)
         img_match = re.search(r'\[IMG: (.+)\]', clean_text)
